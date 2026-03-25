@@ -654,16 +654,7 @@ function renderScheduleTable() {
       const dateStr = td.dataset.date;
       const clubId = parseInt(td.dataset.club, 10);
       if (!state.schedule[dateStr]) state.schedule[dateStr] = {};
-      const currentlyAssigned = state.schedule[dateStr][clubId];
-      if (!currentlyAssigned) {
-        // 割り当てようとしている → 既に2つ割り当て済みか確認
-        const assignedCount = state.clubs.filter(c => state.schedule[dateStr][c.id]).length;
-        if (assignedCount >= 2) {
-          alert('1日に割り当てられるのは最大2部活までです。');
-          return;
-        }
-      }
-      state.schedule[dateStr][clubId] = !currentlyAssigned;
+      state.schedule[dateStr][clubId] = !state.schedule[dateStr][clubId];
       saveState();
       renderScheduleTable();
       renderStats();
