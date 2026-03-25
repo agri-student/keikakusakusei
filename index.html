@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>体育館使用割作成</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>体育館使用割作成システム</h1>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="clubs">部活動管理</button>
+    <button class="tab" data-tab="conditions">条件設定</button>
+    <button class="tab" data-tab="schedule">スケジュール生成</button>
+  </nav>
+
+  <main>
+    <!-- 部活動管理タブ -->
+    <section id="tab-clubs" class="tab-content active">
+      <h2>部活動の登録</h2>
+      <div class="form-row">
+        <input type="text" id="club-name" placeholder="部活動名（例：バスケットボール部）">
+        <input type="color" id="club-color" value="#4A90D9">
+        <button id="add-club-btn" class="btn btn-primary">追加</button>
+      </div>
+      <table id="clubs-table">
+        <thead>
+          <tr>
+            <th>色</th>
+            <th>部活動名</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="clubs-tbody"></tbody>
+      </table>
+    </section>
+
+    <!-- 条件設定タブ -->
+    <section id="tab-conditions" class="tab-content">
+      <h2>条件設定</h2>
+
+      <div class="condition-section">
+        <h3>対象月の選択</h3>
+        <input type="month" id="target-month">
+      </div>
+
+      <div class="condition-section">
+        <h3>体育館の使用不可日（式典・メンテナンス等）</h3>
+        <div class="form-row">
+          <input type="date" id="gym-closed-date">
+          <input type="text" id="gym-closed-reason" placeholder="理由（例：卒業式準備）">
+          <button id="add-gym-closed-btn" class="btn btn-secondary">追加</button>
+        </div>
+        <ul id="gym-closed-list" class="date-list"></ul>
+      </div>
+
+      <div class="condition-section">
+        <h3>テスト期間（全部活動停止）</h3>
+        <div class="form-row">
+          <label>開始日 <input type="date" id="exam-start"></label>
+          <label>終了日 <input type="date" id="exam-end"></label>
+          <button id="add-exam-btn" class="btn btn-secondary">追加</button>
+        </div>
+        <ul id="exam-list" class="date-list"></ul>
+      </div>
+
+      <div class="condition-section">
+        <h3>部活動ごとの活動不可日（曜日指定）</h3>
+        <div class="form-row">
+          <select id="club-off-select"></select>
+          <div class="weekday-checkboxes" id="weekday-checks">
+            <label><input type="checkbox" value="0">日</label>
+            <label><input type="checkbox" value="1">月</label>
+            <label><input type="checkbox" value="2">火</label>
+            <label><input type="checkbox" value="3">水</label>
+            <label><input type="checkbox" value="4">木</label>
+            <label><input type="checkbox" value="5">金</label>
+            <label><input type="checkbox" value="6">土</label>
+          </div>
+          <button id="save-weekday-btn" class="btn btn-secondary">保存</button>
+        </div>
+        <div id="club-off-summary"></div>
+      </div>
+
+      <div class="condition-section">
+        <h3>部活動ごとの活動不可日（個別日付）</h3>
+        <div class="form-row">
+          <select id="club-off-date-select"></select>
+          <input type="date" id="club-off-date">
+          <input type="text" id="club-off-date-reason" placeholder="理由">
+          <button id="add-club-off-date-btn" class="btn btn-secondary">追加</button>
+        </div>
+        <ul id="club-off-date-list" class="date-list"></ul>
+      </div>
+
+      <div class="condition-section">
+        <h3>大会予定（大会前は練習を優先配分）</h3>
+        <div class="form-row">
+          <select id="tournament-club-select"></select>
+          <input type="date" id="tournament-date">
+          <input type="text" id="tournament-name" placeholder="大会名">
+          <label>優先期間 <select id="tournament-priority-days">
+            <option value="7">1週間前から</option>
+            <option value="14">2週間前から</option>
+            <option value="21">3週間前から</option>
+          </select></label>
+          <button id="add-tournament-btn" class="btn btn-secondary">追加</button>
+        </div>
+        <ul id="tournament-list" class="date-list"></ul>
+      </div>
+
+      <div class="condition-section">
+        <h3>平日・土日祝の設定</h3>
+        <div class="form-row">
+          <label><input type="checkbox" id="use-saturday" checked>土曜日を使用可能にする</label>
+          <label><input type="checkbox" id="use-sunday">日曜日を使用可能にする</label>
+          <label><input type="checkbox" id="use-holiday">祝日を使用可能にする</label>
+        </div>
+      </div>
+    </section>
+
+    <!-- スケジュール生成タブ -->
+    <section id="tab-schedule" class="tab-content">
+      <h2>スケジュール</h2>
+      <div class="schedule-actions">
+        <button id="generate-btn" class="btn btn-primary">自動生成</button>
+        <button id="export-excel-btn" class="btn btn-success">Excel出力</button>
+        <button id="export-pdf-btn" class="btn btn-success">PDF出力</button>
+      </div>
+      <p class="hint">※ 生成後、カレンダーのセルをクリックして部活動を手動変更できます。</p>
+      <div id="stats-container"></div>
+      <div id="calendar-container"></div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
