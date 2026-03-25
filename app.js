@@ -503,8 +503,11 @@ function generateSchedule() {
     const available = state.clubs.filter(c => isClubAvailable(c.id, dateStr));
     if (available.length === 0) return;
 
-    // スコア順にソートして上位2つを割り当て
-    const scored = available.map(club => ({ club, score: scoreFn(club) }));
+    // スコアにランダム要素を加えて毎回異なる結果にする
+    const scored = available.map(club => ({
+      club,
+      score: scoreFn(club) + Math.random() * 0.5
+    }));
     scored.sort((a, b) => b.score - a.score);
 
     const assignCount = Math.min(MAX_CLUBS_PER_DAY, scored.length);
@@ -514,8 +517,18 @@ function generateSchedule() {
     }
   }
 
+  // 日付の処理順もシャッフルして偏りを減らす
+  function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
   // 優先日: 大会前の部活を優先割り当て
-  priorityDates.forEach(dateStr => {
+  shuffle(priorityDates).forEach(dateStr => {
     assignClubsToDate(dateStr, club => {
       const priority = getTournamentPriority(club.id, dateStr);
       const equalityPenalty = clubCounts[club.id] * 0.3;
@@ -524,7 +537,7 @@ function generateSchedule() {
   });
 
   // 通常日: 均等配分（使用回数が少ない部活を優先）
-  normalDates.forEach(dateStr => {
+  shuffle(normalDates).forEach(dateStr => {
     assignClubsToDate(dateStr, club => {
       return -clubCounts[club.id];
     });
