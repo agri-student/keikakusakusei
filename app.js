@@ -3,7 +3,7 @@
 // ========================================
 const state = {
   clubs: [],            // { id, name, color }
-  gymClosedDates: [],   // { date, reason }
+  schoolEvents: [],     // { id, name, startDate, endDate, gymClosed }
   examPeriods: [],      // { start, end }
   clubOffDays: {},      // { clubId: [weekday numbers] }
   clubOffDates: {},     // { clubId: [{ date, reason }] }
@@ -12,7 +12,7 @@ const state = {
   useSunday: false,
   useHoliday: false,
   targetMonth: '',
-  schedule: {},         // { 'YYYY-MM-DD': clubId | null }
+  schedule: {},         // { 'YYYY-MM-DD': { clubId: true/false, ... } }
 };
 
 // 日本の祝日（2025-2027年の主な祝日）
@@ -32,6 +32,7 @@ const HOLIDAYS = [
 ];
 
 let nextClubId = 1;
+let nextEventId = 1;
 
 // ========================================
 // 初期化
@@ -40,6 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadState();
   initTabs();
   initClubManagement();
+  initEvents();
   initConditions();
   initSchedule();
   renderAll();
@@ -51,6 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function saveState() {
   localStorage.setItem('gymScheduleState', JSON.stringify(state));
   localStorage.setItem('gymScheduleNextId', nextClubId.toString());
+  localStorage.setItem('gymScheduleNextEventId', nextEventId.toString());
 }
 
 function loadState() {
@@ -58,12 +61,13 @@ function loadState() {
   if (saved) {
     const parsed = JSON.parse(saved);
     Object.assign(state, parsed);
+    // 旧データ互換: schoolEvents がない場合
+    if (!state.schoolEvents) state.schoolEvents = [];
   }
   const savedId = localStorage.getItem('gymScheduleNextId');
-  if (savedId) {
-    nextClubId = parseInt(savedId, 10);
-  }
-  // 対象月のデフォルト値
+  if (savedId) nextClubId = parseInt(savedId, 10);
+  const savedEventId = localStorage.getItem('gymScheduleNextEventId');
+  if (savedEventId) nextEventId = parseInt(savedEventId, 10);
   if (!state.targetMonth) {
     const now = new Date();
     state.targetMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -80,9 +84,6 @@ function initTabs() {
       document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
       tab.classList.add('active');
       document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
-      if (tab.dataset.tab === 'schedule') {
-        renderStats();
-      }
     });
   });
 }
@@ -102,7 +103,6 @@ function addClub() {
   const colorInput = document.getElementById('club-color');
   const name = nameInput.value.trim();
   if (!name) return;
-
   state.clubs.push({ id: nextClubId++, name, color: colorInput.value });
   nameInput.value = '';
   saveState();
@@ -110,16 +110,13 @@ function addClub() {
 }
 
 function removeClub(id) {
-  if (!confirm('この部活動を削除しますか？関連する条件も削除されます。')) return;
+  if (!confirm('この部活動を削除しますか？')) return;
   state.clubs = state.clubs.filter(c => c.id !== id);
   delete state.clubOffDays[id];
   delete state.clubOffDates[id];
   state.tournaments = state.tournaments.filter(t => t.clubId !== id);
-  // スケジュールからも削除
   for (const date in state.schedule) {
-    if (state.schedule[date] === id) {
-      state.schedule[date] = null;
-    }
+    if (state.schedule[date]) delete state.schedule[date][id];
   }
   saveState();
   renderAll();
@@ -143,6 +140,74 @@ function renderClubsTable() {
 }
 
 // ========================================
+// 学校行事管理
+// ========================================
+function initEvents() {
+  document.getElementById('add-event-btn').addEventListener('click', addEvent);
+}
+
+function addEvent() {
+  const startInput = document.getElementById('event-start');
+  const endInput = document.getElementById('event-end');
+  const nameInput = document.getElementById('event-name');
+  const gymClosedInput = document.getElementById('event-gym-closed');
+
+  const startDate = startInput.value;
+  const name = nameInput.value.trim();
+  if (!startDate || !name) { alert('開始日と行事名を入力してください。'); return; }
+
+  const endDate = endInput.value || startDate;
+  if (endDate < startDate) { alert('終了日は開始日以降にしてください。'); return; }
+
+  state.schoolEvents.push({
+    id: nextEventId++,
+    name,
+    startDate,
+    endDate,
+    gymClosed: gymClosedInput.checked
+  });
+
+  startInput.value = '';
+  endInput.value = '';
+  nameInput.value = '';
+  gymClosedInput.checked = false;
+  saveState();
+  renderEventsTable();
+}
+
+function removeEvent(id) {
+  state.schoolEvents = state.schoolEvents.filter(e => e.id !== id);
+  saveState();
+  renderEventsTable();
+}
+
+function renderEventsTable() {
+  const tbody = document.getElementById('events-tbody');
+  tbody.innerHTML = '';
+  // 日付順にソート
+  const sorted = [...state.schoolEvents].sort((a, b) => a.startDate.localeCompare(b.startDate));
+  sorted.forEach(ev => {
+    const tr = document.createElement('tr');
+    const isMulti = ev.startDate !== ev.endDate;
+    const dateStr = isMulti ? `${ev.startDate} 〜 ${ev.endDate}` : ev.startDate;
+    const multiBadge = isMulti ? '<span class="badge badge-multi">複数日</span>' : '';
+    const gymBadge = ev.gymClosed
+      ? '<span class="badge badge-closed">使用不可</span>'
+      : '<span class="badge badge-open">使用可</span>';
+    tr.innerHTML = `
+      <td>${dateStr}${multiBadge}</td>
+      <td>${escapeHtml(ev.name)}</td>
+      <td>${gymBadge}</td>
+      <td><button class="btn btn-danger" data-remove-event="${ev.id}">削除</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  tbody.querySelectorAll('[data-remove-event]').forEach(btn => {
+    btn.addEventListener('click', () => removeEvent(parseInt(btn.dataset.removeEvent, 10)));
+  });
+}
+
+// ========================================
 // 条件設定
 // ========================================
 function initConditions() {
@@ -151,55 +216,21 @@ function initConditions() {
     saveState();
   });
 
-  document.getElementById('add-gym-closed-btn').addEventListener('click', addGymClosedDate);
   document.getElementById('add-exam-btn').addEventListener('click', addExamPeriod);
   document.getElementById('save-weekday-btn').addEventListener('click', saveWeekdayOff);
   document.getElementById('add-club-off-date-btn').addEventListener('click', addClubOffDate);
   document.getElementById('add-tournament-btn').addEventListener('click', addTournament);
 
   document.getElementById('use-saturday').addEventListener('change', e => {
-    state.useSaturday = e.target.checked;
-    saveState();
+    state.useSaturday = e.target.checked; saveState();
   });
   document.getElementById('use-sunday').addEventListener('change', e => {
-    state.useSunday = e.target.checked;
-    saveState();
+    state.useSunday = e.target.checked; saveState();
   });
   document.getElementById('use-holiday').addEventListener('change', e => {
-    state.useHoliday = e.target.checked;
-    saveState();
+    state.useHoliday = e.target.checked; saveState();
   });
-
   document.getElementById('club-off-select').addEventListener('change', loadWeekdayChecks);
-}
-
-function addGymClosedDate() {
-  const dateInput = document.getElementById('gym-closed-date');
-  const reasonInput = document.getElementById('gym-closed-reason');
-  const date = dateInput.value;
-  if (!date) return;
-  state.gymClosedDates.push({ date, reason: reasonInput.value.trim() || '使用不可' });
-  dateInput.value = '';
-  reasonInput.value = '';
-  saveState();
-  renderGymClosedList();
-}
-
-function renderGymClosedList() {
-  const ul = document.getElementById('gym-closed-list');
-  ul.innerHTML = '';
-  state.gymClosedDates.forEach((item, i) => {
-    const li = document.createElement('li');
-    li.innerHTML = `${item.date} - ${escapeHtml(item.reason)} <button class="btn btn-danger" data-idx="${i}">削除</button>`;
-    ul.appendChild(li);
-  });
-  ul.querySelectorAll('.btn-danger').forEach(btn => {
-    btn.addEventListener('click', () => {
-      state.gymClosedDates.splice(parseInt(btn.dataset.idx, 10), 1);
-      saveState();
-      renderGymClosedList();
-    });
-  });
 }
 
 function addExamPeriod() {
@@ -327,10 +358,7 @@ function addTournament() {
   const priorityDays = parseInt(document.getElementById('tournament-priority-days').value, 10);
   if (!clubId || !date) return;
   state.tournaments.push({
-    clubId: parseInt(clubId, 10),
-    date,
-    name: name || '大会',
-    priorityDays
+    clubId: parseInt(clubId, 10), date, name: name || '大会', priorityDays
   });
   document.getElementById('tournament-date').value = '';
   document.getElementById('tournament-name').value = '';
@@ -358,21 +386,14 @@ function renderTournamentList() {
 }
 
 // ========================================
-// スケジュール自動生成
+// ヘルパー関数
 // ========================================
-function initSchedule() {
-  document.getElementById('generate-btn').addEventListener('click', generateSchedule);
-  document.getElementById('export-excel-btn').addEventListener('click', exportExcel);
-  document.getElementById('export-pdf-btn').addEventListener('click', exportPdf);
-}
-
 function getMonthDates(yearMonth) {
   const [year, month] = yearMonth.split('-').map(Number);
   const dates = [];
   const daysInMonth = new Date(year, month, 0).getDate();
   for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    dates.push(dateStr);
+    dates.push(`${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
   }
   return dates;
 }
@@ -385,47 +406,33 @@ function isDateInExamPeriod(dateStr) {
   return state.examPeriods.some(p => dateStr >= p.start && dateStr <= p.end);
 }
 
-function isGymClosed(dateStr) {
-  return state.gymClosedDates.find(g => g.date === dateStr);
+function getEventsForDate(dateStr) {
+  return state.schoolEvents.filter(ev => dateStr >= ev.startDate && dateStr <= ev.endDate);
+}
+
+function isGymClosedByEvent(dateStr) {
+  return state.schoolEvents.some(ev => ev.gymClosed && dateStr >= ev.startDate && dateStr <= ev.endDate);
 }
 
 function isClubAvailable(clubId, dateStr) {
   const date = new Date(dateStr + 'T00:00:00');
   const dow = date.getDay();
-
-  // 曜日指定の活動不可日
   const offDays = state.clubOffDays[clubId] || [];
   if (offDays.includes(dow)) return false;
-
-  // 個別日付の活動不可日
   const offDates = state.clubOffDates[clubId] || [];
   if (offDates.some(d => d.date === dateStr)) return false;
-
-  // 大会当日は活動不可（大会に出ているため体育館は使わない）
   if (state.tournaments.some(t => t.clubId === clubId && t.date === dateStr)) return false;
-
   return true;
 }
 
-function isAvailableDay(dateStr) {
+function isDayAvailable(dateStr) {
   const date = new Date(dateStr + 'T00:00:00');
   const dow = date.getDay();
-
-  // 体育館使用不可日
-  if (isGymClosed(dateStr)) return false;
-
-  // テスト期間
+  if (isGymClosedByEvent(dateStr)) return false;
   if (isDateInExamPeriod(dateStr)) return false;
-
-  // 日曜
   if (dow === 0 && !state.useSunday) return false;
-
-  // 土曜
   if (dow === 6 && !state.useSaturday) return false;
-
-  // 祝日
   if (isHoliday(dateStr) && !state.useHoliday) return false;
-
   return true;
 }
 
@@ -437,7 +444,6 @@ function getTournamentPriority(clubId, dateStr) {
     const currentDate = new Date(dateStr + 'T00:00:00');
     const diffDays = (tournamentDate - currentDate) / (1000 * 60 * 60 * 24);
     if (diffDays > 0 && diffDays <= t.priorityDays) {
-      // 大会が近いほど優先度が高い
       const priority = 1 + (t.priorityDays - diffDays) / t.priorityDays;
       if (priority > maxPriority) maxPriority = priority;
     }
@@ -445,62 +451,60 @@ function getTournamentPriority(clubId, dateStr) {
   return maxPriority;
 }
 
+// ========================================
+// スケジュール自動生成
+// ========================================
+function initSchedule() {
+  document.getElementById('generate-btn').addEventListener('click', generateSchedule);
+  document.getElementById('export-excel-btn').addEventListener('click', exportExcel);
+  document.getElementById('export-pdf-btn').addEventListener('click', exportPdf);
+}
+
 function generateSchedule() {
-  if (state.clubs.length === 0) {
-    alert('部活動を登録してください。');
-    return;
-  }
-  if (!state.targetMonth) {
-    alert('対象月を選択してください。');
-    return;
-  }
+  if (state.clubs.length === 0) { alert('部活動を登録してください。'); return; }
+  if (!state.targetMonth) { alert('対象月を選択してください。'); return; }
 
   const dates = getMonthDates(state.targetMonth);
   const schedule = {};
   const clubCounts = {};
   state.clubs.forEach(c => { clubCounts[c.id] = 0; });
 
-  // 利用可能な日を抽出
-  const availableDates = dates.filter(d => isAvailableDay(d));
+  const availableDates = dates.filter(d => isDayAvailable(d));
 
-  // 各日について、利用可能な部活動リストを作成
-  const dateOptions = {};
+  // 各日の各部活の利用可否を作成
   availableDates.forEach(dateStr => {
-    dateOptions[dateStr] = state.clubs.filter(c => isClubAvailable(c.id, dateStr));
-  });
-
-  // 大会前優先度を計算
-  const datePriorities = {};
-  availableDates.forEach(dateStr => {
-    datePriorities[dateStr] = {};
+    schedule[dateStr] = {};
     state.clubs.forEach(club => {
-      datePriorities[dateStr][club.id] = getTournamentPriority(club.id, dateStr);
+      schedule[dateStr][club.id] = false;
     });
   });
 
-  // スケジュール割り当て
-  // 1. まず大会前の優先日を処理
+  // 使用不可日も空で記録
+  dates.forEach(d => {
+    if (!schedule[d]) {
+      schedule[d] = {};
+      state.clubs.forEach(club => { schedule[d][club.id] = false; });
+    }
+  });
+
+  // 割り当てアルゴリズム: 各利用可能日に1つの部活を割り当てる
+  // 大会前優先度を計算
   const priorityDates = availableDates.filter(d =>
-    state.clubs.some(c => datePriorities[d][c.id] > 0)
+    state.clubs.some(c => getTournamentPriority(c.id, d) > 0)
   );
   const normalDates = availableDates.filter(d =>
-    !state.clubs.some(c => datePriorities[d][c.id] > 0)
+    !state.clubs.some(c => getTournamentPriority(c.id, d) > 0)
   );
 
-  // 優先日: 大会前の部活を割り当て（ただし均等配分も考慮）
+  // 優先日: 大会前の部活を割り当て
   priorityDates.forEach(dateStr => {
-    const options = dateOptions[dateStr];
-    if (options.length === 0) {
-      schedule[dateStr] = null;
-      return;
-    }
+    const available = state.clubs.filter(c => isClubAvailable(c.id, dateStr));
+    if (available.length === 0) return;
 
-    // 優先度が高い部活を選択
     let bestClub = null;
     let bestScore = -Infinity;
-    options.forEach(club => {
-      const priority = datePriorities[dateStr][club.id];
-      // 優先度がある場合はそれを重視、均等配分も少し考慮
+    available.forEach(club => {
+      const priority = getTournamentPriority(club.id, dateStr);
       const equalityPenalty = clubCounts[club.id] * 0.3;
       const score = priority * 2 - equalityPenalty;
       if (score > bestScore) {
@@ -509,181 +513,167 @@ function generateSchedule() {
       }
     });
 
-    schedule[dateStr] = bestClub ? bestClub.id : null;
-    if (bestClub) clubCounts[bestClub.id]++;
+    if (bestClub) {
+      schedule[dateStr][bestClub.id] = true;
+      clubCounts[bestClub.id]++;
+    }
   });
 
-  // 通常日: 均等配分を重視
+  // 通常日: 均等配分
   normalDates.forEach(dateStr => {
-    const options = dateOptions[dateStr];
-    if (options.length === 0) {
-      schedule[dateStr] = null;
-      return;
-    }
+    const available = state.clubs.filter(c => isClubAvailable(c.id, dateStr));
+    if (available.length === 0) return;
 
-    // 最も使用回数が少ない部活を選択
     let bestClub = null;
     let minCount = Infinity;
-    options.forEach(club => {
+    available.forEach(club => {
       if (clubCounts[club.id] < minCount) {
         minCount = clubCounts[club.id];
         bestClub = club;
       }
     });
 
-    schedule[dateStr] = bestClub ? bestClub.id : null;
-    if (bestClub) clubCounts[bestClub.id]++;
-  });
-
-  // 使用不可日もスケジュールに記録（表示用）
-  dates.forEach(d => {
-    if (!availableDates.includes(d)) {
-      schedule[d] = null;
+    if (bestClub) {
+      schedule[dateStr][bestClub.id] = true;
+      clubCounts[bestClub.id]++;
     }
   });
 
   state.schedule = schedule;
   saveState();
-  renderCalendar();
+  renderScheduleTable();
   renderStats();
 }
 
 // ========================================
-// カレンダー表示
+// スケジュール表形式表示
 // ========================================
-function renderCalendar() {
-  const container = document.getElementById('calendar-container');
+function renderScheduleTable() {
+  const container = document.getElementById('schedule-container');
   if (!state.targetMonth || Object.keys(state.schedule).length === 0) {
     container.innerHTML = '<p style="color:#888;text-align:center;padding:40px;">スケジュールを生成してください。</p>';
     return;
   }
 
   const [year, month] = state.targetMonth.split('-').map(Number);
-  const firstDay = new Date(year, month - 1, 1).getDay();
   const daysInMonth = new Date(year, month, 0).getDate();
   const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
 
-  let html = `<h3 style="margin-bottom:8px;">${year}年${month}月</h3>`;
-  html += '<table class="calendar-table"><thead><tr>';
-  dayNames.forEach((name, i) => {
-    const cls = i === 0 ? 'sunday' : i === 6 ? 'saturday' : '';
-    html += `<th class="${cls}">${name}</th>`;
-  });
-  html += '</tr></thead><tbody><tr>';
+  let html = `<table class="schedule-table">`;
+  html += `<caption>${month}月体育館割り当て</caption>`;
 
-  // 空セル
-  for (let i = 0; i < firstDay; i++) {
-    html += '<td class="empty"></td>';
-  }
+  // ヘッダー
+  html += '<thead><tr>';
+  html += '<th class="col-week">月</th>';
+  html += '<th class="col-day">日</th>';
+  html += '<th class="col-dow">曜</th>';
+  html += '<th class="col-event">行事</th>';
+  state.clubs.forEach(club => {
+    html += `<th class="col-club">${escapeHtml(club.name)}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  // 週番号の計算
+  let currentWeek = 1;
+  let lastSunday = false;
 
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const date = new Date(year, month - 1, d);
     const dow = date.getDay();
-    const dayOfWeek = (firstDay + d - 1) % 7;
 
-    if (dayOfWeek === 0 && d > 1) {
-      html += '</tr><tr>';
+    // 週の切り替え（日曜始まり）
+    const isWeekStart = dow === 0 && d > 1;
+    if (isWeekStart) currentWeek++;
+
+    // 行のクラス
+    let rowClass = '';
+    if (isWeekStart) rowClass += ' week-start';
+    if (isDateInExamPeriod(dateStr)) {
+      rowClass += ' row-exam';
+    } else if (isGymClosedByEvent(dateStr)) {
+      rowClass += ' row-closed';
+    } else if (dow === 0 || dow === 6 || isHoliday(dateStr)) {
+      rowClass += ' row-weekend';
     }
 
-    const dayClass = dow === 0 ? 'sunday' : dow === 6 ? 'saturday' : '';
-    const holidayClass = isHoliday(dateStr) ? 'holiday' : '';
+    html += `<tr class="${rowClass}">`;
 
-    const gymClosed = isGymClosed(dateStr);
-    const inExam = isDateInExamPeriod(dateStr);
-
-    if (gymClosed || inExam) {
-      const reason = gymClosed ? gymClosed.reason : 'テスト期間';
-      html += `<td class="closed" data-reason="${escapeHtml(reason)}">
-        <div class="day-number ${dayClass} ${holidayClass}">${d}</div>
-      </td>`;
-    } else if (!isAvailableDay(dateStr)) {
-      html += `<td class="closed" data-reason="休み">
-        <div class="day-number ${dayClass} ${holidayClass}">${d}</div>
-      </td>`;
-    } else {
-      const clubId = state.schedule[dateStr];
-      const club = clubId ? state.clubs.find(c => c.id === clubId) : null;
-      const clubHtml = club
-        ? `<div class="day-club" style="background:${club.color}">${escapeHtml(club.name)}</div>`
-        : '<div class="day-club" style="background:#ddd;color:#999">未割当</div>';
-
-      // 大会マーカー
-      const tournaments = state.tournaments.filter(t => t.date === dateStr);
-      const tournamentHtml = tournaments.map(t => {
-        const c = state.clubs.find(cl => cl.id === t.clubId);
-        return `<div class="tournament-marker">大会:${escapeHtml(c ? c.name : '?')}</div>`;
-      }).join('');
-
-      html += `<td data-date="${dateStr}">
-        <div class="day-number ${dayClass} ${holidayClass}">${d}</div>
-        ${tournamentHtml}
-        ${clubHtml}
-      </td>`;
+    // 月（週番号）- 週の最初の日だけ表示
+    if (d === 1 || isWeekStart) {
+      // この週に何日あるか計算
+      let weekDays = 0;
+      for (let wd = d; wd <= daysInMonth; wd++) {
+        const wdDate = new Date(year, month - 1, wd);
+        if (wdDate.getDay() === 6) { weekDays = wd - d + 1; break; }
+        if (wd === daysInMonth) { weekDays = wd - d + 1; break; }
+      }
+      html += `<td class="week-cell" rowspan="${weekDays}">${currentWeek}</td>`;
     }
+
+    // 日
+    html += `<td>${d}</td>`;
+
+    // 曜日
+    const dowClass = dow === 0 ? 'dow-sun' : dow === 6 ? 'dow-sat' : '';
+    const holidayClass = isHoliday(dateStr) ? 'dow-sun' : '';
+    html += `<td class="${dowClass || holidayClass}">${dayNames[dow]}</td>`;
+
+    // 行事
+    const events = getEventsForDate(dateStr);
+    let eventText = '';
+    let eventClass = 'event-cell';
+    if (events.length > 0) {
+      const eventNames = events.map(ev => {
+        const isMulti = ev.startDate !== ev.endDate;
+        let marker = '';
+        if (isMulti) {
+          if (dateStr === ev.startDate) marker = 'event-multi-start';
+          else if (dateStr === ev.endDate) marker = 'event-multi-end';
+          else marker = 'event-multi-mid';
+        }
+        return { name: ev.name, marker };
+      });
+      eventText = eventNames.map(e => {
+        if (e.marker) return `<span class="${e.marker}">${escapeHtml(e.name)}</span>`;
+        return escapeHtml(e.name);
+      }).join(', ');
+    }
+    html += `<td class="${eventClass}">${eventText}</td>`;
+
+    // 各部活の列
+    const dayAvailable = isDayAvailable(dateStr);
+    state.clubs.forEach(club => {
+      if (!dayAvailable) {
+        html += `<td class="club-cell disabled"></td>`;
+      } else if (!isClubAvailable(club.id, dateStr)) {
+        html += `<td class="club-cell unavailable">&times;</td>`;
+      } else {
+        const assigned = state.schedule[dateStr] && state.schedule[dateStr][club.id];
+        const symbol = assigned ? '○' : '';
+        const cls = assigned ? 'club-cell assigned' : 'club-cell';
+        html += `<td class="${cls}" data-date="${dateStr}" data-club="${club.id}">${symbol}</td>`;
+      }
+    });
+
+    html += '</tr>';
   }
 
-  // 残りの空セル
-  const remaining = (7 - ((firstDay + daysInMonth) % 7)) % 7;
-  for (let i = 0; i < remaining; i++) {
-    html += '<td class="empty"></td>';
-  }
-
-  html += '</tr></tbody></table>';
+  html += '</tbody></table>';
   container.innerHTML = html;
 
-  // 手動変更クリックイベント
-  container.querySelectorAll('td[data-date]').forEach(td => {
-    td.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openCellDropdown(td, td.dataset.date);
-    });
-  });
-}
-
-function openCellDropdown(td, dateStr) {
-  // 既存のドロップダウンを閉じる
-  closeAllDropdowns();
-
-  const dropdown = document.createElement('div');
-  dropdown.className = 'cell-dropdown';
-
-  // 「未割当」オプション
-  const noneBtn = document.createElement('button');
-  noneBtn.textContent = '-- 未割当 --';
-  noneBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    state.schedule[dateStr] = null;
-    saveState();
-    renderCalendar();
-    renderStats();
-  });
-  dropdown.appendChild(noneBtn);
-
-  // 各部活動オプション
-  state.clubs.forEach(club => {
-    const btn = document.createElement('button');
-    btn.innerHTML = `<span style="display:inline-block;width:12px;height:12px;background:${club.color};border-radius:2px;margin-right:6px;vertical-align:middle;"></span>${escapeHtml(club.name)}`;
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      state.schedule[dateStr] = club.id;
+  // 手動切り替えクリックイベント
+  container.querySelectorAll('td.club-cell[data-date]').forEach(td => {
+    td.addEventListener('click', () => {
+      const dateStr = td.dataset.date;
+      const clubId = parseInt(td.dataset.club, 10);
+      if (!state.schedule[dateStr]) state.schedule[dateStr] = {};
+      state.schedule[dateStr][clubId] = !state.schedule[dateStr][clubId];
       saveState();
-      renderCalendar();
+      renderScheduleTable();
       renderStats();
     });
-    dropdown.appendChild(btn);
   });
-
-  td.appendChild(dropdown);
-
-  // 外側クリックで閉じる
-  setTimeout(() => {
-    document.addEventListener('click', closeAllDropdowns, { once: true });
-  }, 0);
-}
-
-function closeAllDropdowns() {
-  document.querySelectorAll('.cell-dropdown').forEach(d => d.remove());
 }
 
 // ========================================
@@ -700,10 +690,11 @@ function renderStats() {
   const counts = {};
   state.clubs.forEach(c => { counts[c.id] = 0; });
   for (const date in state.schedule) {
-    const cid = state.schedule[date];
-    if (cid && counts[cid] !== undefined) {
-      counts[cid]++;
-    }
+    state.clubs.forEach(club => {
+      if (state.schedule[date] && state.schedule[date][club.id]) {
+        counts[club.id]++;
+      }
+    });
   }
 
   let html = '<h3>各部活動の使用回数</h3><div class="stats-grid">';
@@ -730,62 +721,60 @@ function exportExcel() {
   const daysInMonth = new Date(year, month, 0).getDate();
   const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
 
-  // データ作成
   const rows = [];
-  rows.push([`${year}年${month}月 体育館使用割`]);
+  rows.push([`${month}月体育館割り当て`]);
   rows.push([]);
-  rows.push(['日付', '曜日', '使用部活動', '備考']);
 
+  // ヘッダー
+  const header = ['月', '日', '曜', '行事'];
+  state.clubs.forEach(c => header.push(c.name));
+  rows.push(header);
+
+  let currentWeek = 1;
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const date = new Date(year, month - 1, d);
     const dow = date.getDay();
-    const dowStr = dayNames[dow];
+    if (dow === 0 && d > 1) currentWeek++;
 
-    let clubName = '';
-    let note = '';
+    const events = getEventsForDate(dateStr);
+    const eventNames = events.map(ev => ev.name).join(', ');
 
-    const gymClosed = isGymClosed(dateStr);
-    if (gymClosed) {
-      note = gymClosed.reason;
-    } else if (isDateInExamPeriod(dateStr)) {
-      note = 'テスト期間';
-    } else if (!isAvailableDay(dateStr)) {
-      note = '休み';
-    } else {
-      const clubId = state.schedule[dateStr];
-      const club = clubId ? state.clubs.find(c => c.id === clubId) : null;
-      clubName = club ? club.name : '';
-    }
+    const row = [d === 1 || dow === 0 ? currentWeek : '', d, dayNames[dow], eventNames];
 
-    // 大会情報
-    const tournaments = state.tournaments.filter(t => t.date === dateStr);
-    if (tournaments.length > 0) {
-      const tNames = tournaments.map(t => {
-        const c = state.clubs.find(cl => cl.id === t.clubId);
-        return `大会:${c ? c.name : '?'} ${t.name}`;
-      });
-      note = note ? `${note} / ${tNames.join(', ')}` : tNames.join(', ');
-    }
+    const dayAvailable = isDayAvailable(dateStr);
+    state.clubs.forEach(club => {
+      if (!dayAvailable) {
+        row.push('');
+      } else if (!isClubAvailable(club.id, dateStr)) {
+        row.push('×');
+      } else {
+        const assigned = state.schedule[dateStr] && state.schedule[dateStr][club.id];
+        row.push(assigned ? '○' : '');
+      }
+    });
 
-    rows.push([`${month}/${d}`, dowStr, clubName, note]);
+    rows.push(row);
   }
 
   // 統計
   rows.push([]);
-  rows.push(['--- 使用回数 ---']);
+  rows.push(['使用回数']);
   state.clubs.forEach(club => {
     let count = 0;
     for (const date in state.schedule) {
-      if (state.schedule[date] === club.id) count++;
+      if (state.schedule[date] && state.schedule[date][club.id]) count++;
     }
     rows.push([club.name, `${count}回`]);
   });
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 10 }, { wch: 6 }, { wch: 20 }, { wch: 30 }];
+  const colWidths = [{ wch: 4 }, { wch: 4 }, { wch: 4 }, { wch: 30 }];
+  state.clubs.forEach(() => colWidths.push({ wch: 12 }));
+  ws['!cols'] = colWidths;
+
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, `${year}年${month}月`);
+  XLSX.utils.book_append_sheet(wb, ws, `${month}月`);
   XLSX.writeFile(wb, `体育館使用割_${year}年${month}月.xlsx`);
 }
 
@@ -803,54 +792,61 @@ function exportPdf() {
   const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
 
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-  // フォント設定（日本語対応のため基本フォントを使用）
   doc.setFont('helvetica');
+  doc.setFontSize(14);
+  doc.text(`${month}月 Gym Schedule (${year})`, 14, 15);
 
-  // タイトル
-  doc.setFontSize(16);
-  doc.text(`${year}/${month} Gym Schedule`, 14, 15);
+  const headRow = ['W', 'Day', 'DoW', 'Event'];
+  state.clubs.forEach(c => headRow.push(c.name));
 
-  // テーブルデータ
   const tableData = [];
+  let currentWeek = 1;
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const date = new Date(year, month - 1, d);
     const dow = date.getDay();
+    if (dow === 0 && d > 1) currentWeek++;
 
-    let clubName = '';
-    let note = '';
+    const events = getEventsForDate(dateStr);
+    const eventNames = events.map(ev => ev.name).join(', ');
 
-    const gymClosed = isGymClosed(dateStr);
-    if (gymClosed) {
-      note = gymClosed.reason;
-    } else if (isDateInExamPeriod(dateStr)) {
-      note = 'Exam';
-    } else if (!isAvailableDay(dateStr)) {
-      note = 'Off';
-    } else {
-      const clubId = state.schedule[dateStr];
-      const club = clubId ? state.clubs.find(c => c.id === clubId) : null;
-      clubName = club ? club.name : '';
-    }
+    const row = [d === 1 || dow === 0 ? currentWeek : '', d, dayNames[dow], eventNames];
 
-    tableData.push([`${month}/${d}`, dayNames[dow], clubName, note]);
+    const dayAvailable = isDayAvailable(dateStr);
+    state.clubs.forEach(club => {
+      if (!dayAvailable) {
+        row.push('');
+      } else if (!isClubAvailable(club.id, dateStr)) {
+        row.push('x');
+      } else {
+        const assigned = state.schedule[dateStr] && state.schedule[dateStr][club.id];
+        row.push(assigned ? 'O' : '');
+      }
+    });
+
+    tableData.push(row);
   }
 
   doc.autoTable({
-    head: [['Date', 'Day', 'Club', 'Note']],
+    head: [headRow],
     body: tableData,
     startY: 22,
-    styles: { fontSize: 8, cellPadding: 2 },
+    styles: { fontSize: 7, cellPadding: 1.5, halign: 'center' },
     headStyles: { fillColor: [44, 62, 80] },
+    columnStyles: {
+      3: { halign: 'left', cellWidth: 40 }
+    },
     didParseCell: function(data) {
-      if (data.section === 'body' && data.column.index === 1) {
-        const day = data.cell.text[0];
-        if (day === '日') {
-          data.cell.styles.textColor = [231, 76, 60];
-        } else if (day === '土') {
-          data.cell.styles.textColor = [52, 152, 219];
+      if (data.section === 'body') {
+        const dow = data.row.raw[2];
+        if (dow === '日') {
+          if (data.column.index <= 3) data.cell.styles.textColor = [231, 76, 60];
+          data.cell.styles.fillColor = [240, 240, 240];
+        } else if (dow === '土') {
+          if (data.column.index <= 3) data.cell.styles.textColor = [52, 152, 219];
+          data.cell.styles.fillColor = [240, 240, 240];
         }
       }
     }
@@ -865,19 +861,18 @@ function exportPdf() {
 function renderAll() {
   renderClubsTable();
   populateClubSelects();
+  renderEventsTable();
 
-  // 条件タブの値を復元
   document.getElementById('target-month').value = state.targetMonth;
   document.getElementById('use-saturday').checked = state.useSaturday;
   document.getElementById('use-sunday').checked = state.useSunday;
   document.getElementById('use-holiday').checked = state.useHoliday;
 
-  renderGymClosedList();
   renderExamList();
   renderClubOffSummary();
   renderClubOffDateList();
   renderTournamentList();
-  renderCalendar();
+  renderScheduleTable();
   renderStats();
 }
 

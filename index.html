@@ -13,6 +13,7 @@
 
   <nav class="tabs">
     <button class="tab active" data-tab="clubs">部活動管理</button>
+    <button class="tab" data-tab="events">学校行事</button>
     <button class="tab" data-tab="conditions">条件設定</button>
     <button class="tab" data-tab="schedule">スケジュール生成</button>
   </nav>
@@ -22,7 +23,7 @@
     <section id="tab-clubs" class="tab-content active">
       <h2>部活動の登録</h2>
       <div class="form-row">
-        <input type="text" id="club-name" placeholder="部活動名（例：バスケットボール部）">
+        <input type="text" id="club-name" placeholder="部活動名（例：バドミントン部）">
         <input type="color" id="club-color" value="#4A90D9">
         <button id="add-club-btn" class="btn btn-primary">追加</button>
       </div>
@@ -38,6 +39,39 @@
       </table>
     </section>
 
+    <!-- 学校行事タブ -->
+    <section id="tab-events" class="tab-content">
+      <h2>学校行事の登録</h2>
+      <div class="condition-section">
+        <h3>学校行事を追加</h3>
+        <div class="form-row">
+          <label>開始日 <input type="date" id="event-start"></label>
+          <label>終了日 <input type="date" id="event-end"></label>
+        </div>
+        <div class="form-row">
+          <input type="text" id="event-name" placeholder="行事名（例：卒業式、一般入試）" style="flex:1;">
+          <label><input type="checkbox" id="event-gym-closed"> 体育館使用不可</label>
+          <button id="add-event-btn" class="btn btn-primary">追加</button>
+        </div>
+        <p class="hint">※ 1日のみの行事は開始日だけ入力すればOKです。終了日を入力すると複数日の行事になります。</p>
+      </div>
+
+      <div class="condition-section">
+        <h3>登録済み学校行事</h3>
+        <table id="events-table">
+          <thead>
+            <tr>
+              <th>期間</th>
+              <th>行事名</th>
+              <th>体育館</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="events-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
     <!-- 条件設定タブ -->
     <section id="tab-conditions" class="tab-content">
       <h2>条件設定</h2>
@@ -45,16 +79,6 @@
       <div class="condition-section">
         <h3>対象月の選択</h3>
         <input type="month" id="target-month">
-      </div>
-
-      <div class="condition-section">
-        <h3>体育館の使用不可日（式典・メンテナンス等）</h3>
-        <div class="form-row">
-          <input type="date" id="gym-closed-date">
-          <input type="text" id="gym-closed-reason" placeholder="理由（例：卒業式準備）">
-          <button id="add-gym-closed-btn" class="btn btn-secondary">追加</button>
-        </div>
-        <ul id="gym-closed-list" class="date-list"></ul>
       </div>
 
       <div class="condition-section">
@@ -130,9 +154,9 @@
         <button id="export-excel-btn" class="btn btn-success">Excel出力</button>
         <button id="export-pdf-btn" class="btn btn-success">PDF出力</button>
       </div>
-      <p class="hint">※ 生成後、カレンダーのセルをクリックして部活動を手動変更できます。</p>
+      <p class="hint">※ 生成後、○/×セルをクリックして手動で切り替えできます。</p>
       <div id="stats-container"></div>
-      <div id="calendar-container"></div>
+      <div id="schedule-container"></div>
     </section>
   </main>
 
