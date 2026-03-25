@@ -487,7 +487,9 @@ function generateSchedule() {
     }
   });
 
-  // 割り当てアルゴリズム: 各利用可能日に1つの部活を割り当てる
+  // 割り当てアルゴリズム: 各利用可能日に2つの部活を割り当てる
+  const MAX_CLUBS_PER_DAY = 2;
+
   // 大会前優先度を計算
   const priorityDates = availableDates.filter(d =>
     state.clubs.some(c => getTournamentPriority(c.id, d) > 0)
@@ -496,47 +498,36 @@ function generateSchedule() {
     !state.clubs.some(c => getTournamentPriority(c.id, d) > 0)
   );
 
-  // 優先日: 大会前の部活を割り当て
-  priorityDates.forEach(dateStr => {
+  // 各日に最大2つの部活を割り当てるヘルパー
+  function assignClubsToDate(dateStr, scoreFn) {
     const available = state.clubs.filter(c => isClubAvailable(c.id, dateStr));
     if (available.length === 0) return;
 
-    let bestClub = null;
-    let bestScore = -Infinity;
-    available.forEach(club => {
+    // スコア順にソートして上位2つを割り当て
+    const scored = available.map(club => ({ club, score: scoreFn(club) }));
+    scored.sort((a, b) => b.score - a.score);
+
+    const assignCount = Math.min(MAX_CLUBS_PER_DAY, scored.length);
+    for (let i = 0; i < assignCount; i++) {
+      schedule[dateStr][scored[i].club.id] = true;
+      clubCounts[scored[i].club.id]++;
+    }
+  }
+
+  // 優先日: 大会前の部活を優先割り当て
+  priorityDates.forEach(dateStr => {
+    assignClubsToDate(dateStr, club => {
       const priority = getTournamentPriority(club.id, dateStr);
       const equalityPenalty = clubCounts[club.id] * 0.3;
-      const score = priority * 2 - equalityPenalty;
-      if (score > bestScore) {
-        bestScore = score;
-        bestClub = club;
-      }
+      return priority * 2 - equalityPenalty;
     });
-
-    if (bestClub) {
-      schedule[dateStr][bestClub.id] = true;
-      clubCounts[bestClub.id]++;
-    }
   });
 
-  // 通常日: 均等配分
+  // 通常日: 均等配分（使用回数が少ない部活を優先）
   normalDates.forEach(dateStr => {
-    const available = state.clubs.filter(c => isClubAvailable(c.id, dateStr));
-    if (available.length === 0) return;
-
-    let bestClub = null;
-    let minCount = Infinity;
-    available.forEach(club => {
-      if (clubCounts[club.id] < minCount) {
-        minCount = clubCounts[club.id];
-        bestClub = club;
-      }
+    assignClubsToDate(dateStr, club => {
+      return -clubCounts[club.id];
     });
-
-    if (bestClub) {
-      schedule[dateStr][bestClub.id] = true;
-      clubCounts[bestClub.id]++;
-    }
   });
 
   state.schedule = schedule;
@@ -564,7 +555,6 @@ function renderScheduleTable() {
 
   // ヘッダー
   html += '<thead><tr>';
-  html += '<th class="col-week">月</th>';
   html += '<th class="col-day">日</th>';
   html += '<th class="col-dow">曜</th>';
   html += '<th class="col-event">行事</th>';
@@ -573,10 +563,6 @@ function renderScheduleTable() {
   });
   html += '</tr></thead><tbody>';
 
-  // 週番号の計算
-  let currentWeek = 1;
-  let lastSunday = false;
-
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const date = new Date(year, month - 1, d);
@@ -584,7 +570,6 @@ function renderScheduleTable() {
 
     // 週の切り替え（日曜始まり）
     const isWeekStart = dow === 0 && d > 1;
-    if (isWeekStart) currentWeek++;
 
     // 行のクラス
     let rowClass = '';
@@ -598,18 +583,6 @@ function renderScheduleTable() {
     }
 
     html += `<tr class="${rowClass}">`;
-
-    // 月（週番号）- 週の最初の日だけ表示
-    if (d === 1 || isWeekStart) {
-      // この週に何日あるか計算
-      let weekDays = 0;
-      for (let wd = d; wd <= daysInMonth; wd++) {
-        const wdDate = new Date(year, month - 1, wd);
-        if (wdDate.getDay() === 6) { weekDays = wd - d + 1; break; }
-        if (wd === daysInMonth) { weekDays = wd - d + 1; break; }
-      }
-      html += `<td class="week-cell" rowspan="${weekDays}">${currentWeek}</td>`;
-    }
 
     // 日
     html += `<td>${d}</td>`;
@@ -662,13 +635,22 @@ function renderScheduleTable() {
   html += '</tbody></table>';
   container.innerHTML = html;
 
-  // 手動切り替えクリックイベント
+  // 手動切り替えクリックイベント（1日最大2部活）
   container.querySelectorAll('td.club-cell[data-date]').forEach(td => {
     td.addEventListener('click', () => {
       const dateStr = td.dataset.date;
       const clubId = parseInt(td.dataset.club, 10);
       if (!state.schedule[dateStr]) state.schedule[dateStr] = {};
-      state.schedule[dateStr][clubId] = !state.schedule[dateStr][clubId];
+      const currentlyAssigned = state.schedule[dateStr][clubId];
+      if (!currentlyAssigned) {
+        // 割り当てようとしている → 既に2つ割り当て済みか確認
+        const assignedCount = state.clubs.filter(c => state.schedule[dateStr][c.id]).length;
+        if (assignedCount >= 2) {
+          alert('1日に割り当てられるのは最大2部活までです。');
+          return;
+        }
+      }
+      state.schedule[dateStr][clubId] = !currentlyAssigned;
       saveState();
       renderScheduleTable();
       renderStats();
@@ -726,21 +708,19 @@ function exportExcel() {
   rows.push([]);
 
   // ヘッダー
-  const header = ['月', '日', '曜', '行事'];
+  const header = ['日', '曜', '行事'];
   state.clubs.forEach(c => header.push(c.name));
   rows.push(header);
 
-  let currentWeek = 1;
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const date = new Date(year, month - 1, d);
     const dow = date.getDay();
-    if (dow === 0 && d > 1) currentWeek++;
 
     const events = getEventsForDate(dateStr);
     const eventNames = events.map(ev => ev.name).join(', ');
 
-    const row = [d === 1 || dow === 0 ? currentWeek : '', d, dayNames[dow], eventNames];
+    const row = [d, dayNames[dow], eventNames];
 
     const dayAvailable = isDayAvailable(dateStr);
     state.clubs.forEach(club => {
@@ -769,7 +749,7 @@ function exportExcel() {
   });
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  const colWidths = [{ wch: 4 }, { wch: 4 }, { wch: 4 }, { wch: 30 }];
+  const colWidths = [{ wch: 4 }, { wch: 4 }, { wch: 30 }];
   state.clubs.forEach(() => colWidths.push({ wch: 12 }));
   ws['!cols'] = colWidths;
 
@@ -798,21 +778,19 @@ function exportPdf() {
   doc.setFontSize(14);
   doc.text(`${month}月 Gym Schedule (${year})`, 14, 15);
 
-  const headRow = ['W', 'Day', 'DoW', 'Event'];
+  const headRow = ['Day', 'DoW', 'Event'];
   state.clubs.forEach(c => headRow.push(c.name));
 
   const tableData = [];
-  let currentWeek = 1;
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const date = new Date(year, month - 1, d);
     const dow = date.getDay();
-    if (dow === 0 && d > 1) currentWeek++;
 
     const events = getEventsForDate(dateStr);
     const eventNames = events.map(ev => ev.name).join(', ');
 
-    const row = [d === 1 || dow === 0 ? currentWeek : '', d, dayNames[dow], eventNames];
+    const row = [d, dayNames[dow], eventNames];
 
     const dayAvailable = isDayAvailable(dateStr);
     state.clubs.forEach(club => {
@@ -836,16 +814,16 @@ function exportPdf() {
     styles: { fontSize: 7, cellPadding: 1.5, halign: 'center' },
     headStyles: { fillColor: [44, 62, 80] },
     columnStyles: {
-      3: { halign: 'left', cellWidth: 40 }
+      2: { halign: 'left', cellWidth: 40 }
     },
     didParseCell: function(data) {
       if (data.section === 'body') {
-        const dow = data.row.raw[2];
+        const dow = data.row.raw[1];
         if (dow === '日') {
-          if (data.column.index <= 3) data.cell.styles.textColor = [231, 76, 60];
+          if (data.column.index <= 2) data.cell.styles.textColor = [231, 76, 60];
           data.cell.styles.fillColor = [240, 240, 240];
         } else if (dow === '土') {
-          if (data.column.index <= 3) data.cell.styles.textColor = [52, 152, 219];
+          if (data.column.index <= 2) data.cell.styles.textColor = [52, 152, 219];
           data.cell.styles.fillColor = [240, 240, 240];
         }
       }

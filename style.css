@@ -305,10 +305,6 @@ th {
   z-index: 2;
 }
 
-.schedule-table th.col-week {
-  width: 30px;
-}
-
 .schedule-table th.col-day {
   width: 30px;
 }
@@ -323,13 +319,6 @@ th {
 
 .schedule-table th.col-club {
   min-width: 80px;
-}
-
-/* Week number cell */
-.schedule-table td.week-cell {
-  background: #f0f0f0;
-  font-weight: bold;
-  font-size: 0.9rem;
 }
 
 /* Day of week colors */
