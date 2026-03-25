@@ -709,16 +709,19 @@ function exportExcel() {
   const [year, month] = state.targetMonth.split('-').map(Number);
   const daysInMonth = new Date(year, month, 0).getDate();
   const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+  const totalCols = 3 + state.clubs.length; // 日,曜,行事 + 部活数
 
   const rows = [];
-  rows.push([`${month}月体育館割り当て`]);
-  rows.push([]);
 
-  // ヘッダー
+  // 行0: タイトル
+  rows.push([`${month}月体育館割り当て`]);
+
+  // 行1: ヘッダー
   const header = ['日', '曜', '行事'];
   state.clubs.forEach(c => header.push(c.name));
   rows.push(header);
 
+  // 行2以降: データ
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const date = new Date(year, month - 1, d);
@@ -744,21 +747,29 @@ function exportExcel() {
     rows.push(row);
   }
 
-  // 統計
-  rows.push([]);
-  rows.push(['使用回数']);
-  state.clubs.forEach(club => {
-    let count = 0;
-    for (const date in state.schedule) {
-      if (state.schedule[date] && state.schedule[date][club.id]) count++;
-    }
-    rows.push([club.name, `${count}回`]);
-  });
-
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  const colWidths = [{ wch: 4 }, { wch: 4 }, { wch: 30 }];
-  state.clubs.forEach(() => colWidths.push({ wch: 12 }));
+
+  // タイトル行をセル結合（A1からG1等）
+  const lastColLetter = String.fromCharCode(64 + totalCols); // D=4 -> 'D', etc.
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: totalCols - 1 } }
+  ];
+
+  // 列幅設定
+  const colWidths = [
+    { wch: 4 },   // A: 日
+    { wch: 4 },   // B: 曜
+    { wch: 18 },  // C: 行事
+  ];
+  state.clubs.forEach(() => colWidths.push({ wch: 14 }));
   ws['!cols'] = colWidths;
+
+  // 全行の高さを22.5に設定
+  const rowHeights = [];
+  for (let i = 0; i < rows.length; i++) {
+    rowHeights.push({ hpt: 22.5 });
+  }
+  ws['!rows'] = rowHeights;
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, `${month}月`);
