@@ -331,9 +331,19 @@ th {
 }
 
 /* Row backgrounds */
-.schedule-table tr.row-holiday,
-.schedule-table tr.row-weekend {
-  background: #e8e8e8;
+.schedule-table tr.row-sunday {
+  background: #fce4ec;
+  color: #c62828;
+}
+
+.schedule-table tr.row-saturday {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.schedule-table tr.row-holiday {
+  background: #fce4ec;
+  color: #c62828;
 }
 
 .schedule-table tr.row-closed {

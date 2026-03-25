@@ -594,8 +594,10 @@ function renderScheduleTable() {
       rowClass += ' row-exam';
     } else if (isGymClosedByEvent(dateStr)) {
       rowClass += ' row-closed';
-    } else if (dow === 0 || dow === 6 || isHoliday(dateStr)) {
-      rowClass += ' row-weekend';
+    } else if (dow === 0 || isHoliday(dateStr)) {
+      rowClass += ' row-sunday';
+    } else if (dow === 6) {
+      rowClass += ' row-saturday';
     }
 
     html += `<tr class="${rowClass}">`;
@@ -709,7 +711,46 @@ function exportExcel() {
   const [year, month] = state.targetMonth.split('-').map(Number);
   const daysInMonth = new Date(year, month, 0).getDate();
   const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
-  const totalCols = 3 + state.clubs.length; // 日,曜,行事 + 部活数
+  const totalCols = 3 + state.clubs.length;
+
+  // スタイル定義
+  const borderThin = {
+    top: { style: 'thin' }, bottom: { style: 'thin' },
+    left: { style: 'thin' }, right: { style: 'thin' }
+  };
+  const baseStyle = {
+    border: borderThin,
+    alignment: { horizontal: 'center', vertical: 'center' },
+    font: { name: 'Yu Gothic', sz: 11 }
+  };
+  const titleStyle = {
+    font: { name: 'Yu Gothic', sz: 16, bold: true },
+    alignment: { horizontal: 'center', vertical: 'center' }
+  };
+  const headerStyle = {
+    ...baseStyle,
+    font: { name: 'Yu Gothic', sz: 11, bold: true },
+    fill: { fgColor: { rgb: 'D9E1F2' } }
+  };
+  const sundayStyle = {
+    ...baseStyle,
+    fill: { fgColor: { rgb: 'FCE4EC' } },
+    font: { name: 'Yu Gothic', sz: 11, color: { rgb: 'C62828' } }
+  };
+  const saturdayStyle = {
+    ...baseStyle,
+    fill: { fgColor: { rgb: 'E3F2FD' } },
+    font: { name: 'Yu Gothic', sz: 11, color: { rgb: '1565C0' } }
+  };
+  const holidayStyle = {
+    ...baseStyle,
+    fill: { fgColor: { rgb: 'FCE4EC' } },
+    font: { name: 'Yu Gothic', sz: 11, color: { rgb: 'C62828' } }
+  };
+  const eventCellLeft = { ...baseStyle, alignment: { horizontal: 'left', vertical: 'center' } };
+  const sundayEventLeft = { ...sundayStyle, alignment: { horizontal: 'left', vertical: 'center' } };
+  const saturdayEventLeft = { ...saturdayStyle, alignment: { horizontal: 'left', vertical: 'center' } };
+  const holidayEventLeft = { ...holidayStyle, alignment: { horizontal: 'left', vertical: 'center' } };
 
   const rows = [];
 
@@ -722,6 +763,7 @@ function exportExcel() {
   rows.push(header);
 
   // 行2以降: データ
+  const rowMeta = []; // 各データ行の曜日情報
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const date = new Date(year, month - 1, d);
@@ -745,12 +787,45 @@ function exportExcel() {
     });
 
     rows.push(row);
+    rowMeta.push({ dow, dateStr, holiday: isHoliday(dateStr) });
   }
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
 
-  // タイトル行をセル結合（A1からG1等）
-  const lastColLetter = String.fromCharCode(64 + totalCols); // D=4 -> 'D', etc.
+  // タイトル行スタイル
+  ws['A1'].s = titleStyle;
+
+  // ヘッダー行スタイル（行1）
+  for (let c = 0; c < totalCols; c++) {
+    const cellRef = XLSX.utils.encode_cell({ r: 1, c });
+    if (ws[cellRef]) ws[cellRef].s = headerStyle;
+  }
+
+  // データ行スタイル（行2以降）
+  for (let i = 0; i < rowMeta.length; i++) {
+    const r = i + 2; // Excelの行番号（0始まり）
+    const { dow, holiday } = rowMeta[i];
+
+    let rowStyle, rowEventStyle;
+    if (dow === 0 || holiday) {
+      rowStyle = sundayStyle;
+      rowEventStyle = sundayEventLeft;
+    } else if (dow === 6) {
+      rowStyle = saturdayStyle;
+      rowEventStyle = saturdayEventLeft;
+    } else {
+      rowStyle = baseStyle;
+      rowEventStyle = eventCellLeft;
+    }
+
+    for (let c = 0; c < totalCols; c++) {
+      const cellRef = XLSX.utils.encode_cell({ r, c });
+      if (!ws[cellRef]) ws[cellRef] = { v: '', t: 's' };
+      ws[cellRef].s = (c === 2) ? rowEventStyle : rowStyle;
+    }
+  }
+
+  // セル結合（タイトル行）
   ws['!merges'] = [
     { s: { r: 0, c: 0 }, e: { r: 0, c: totalCols - 1 } }
   ];
