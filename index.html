@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>体育館使用割作成</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
   <header>
@@ -154,15 +154,15 @@
         <button id="export-excel-btn" class="btn btn-success">Excel出力</button>
         <button id="export-pdf-btn" class="btn btn-success">PDF出力</button>
       </div>
-      <p class="hint">※ 生成後、○/×セルをクリックして手動で切り替えできます。</p>
+      <p class="hint">※ 「自動生成」を何度でも押して別の案を生成できます。セルをクリックして手動で切り替えも可能です。</p>
       <div id="stats-container"></div>
       <div id="schedule-container"></div>
     </section>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
-  <script src="app.js"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

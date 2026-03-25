@@ -464,6 +464,9 @@ function generateSchedule() {
   if (state.clubs.length === 0) { alert('部活動を登録してください。'); return; }
   if (!state.targetMonth) { alert('対象月を選択してください。'); return; }
 
+  // 前回のスケジュールを完全にクリア
+  state.schedule = {};
+
   const dates = getMonthDates(state.targetMonth);
   const schedule = {};
   const clubCounts = {};
@@ -763,7 +766,7 @@ function exportExcel() {
 }
 
 // ========================================
-// PDF出力
+// PDF出力（html2canvas で日本語対応）
 // ========================================
 function exportPdf() {
   if (Object.keys(state.schedule).length === 0) {
@@ -771,70 +774,46 @@ function exportPdf() {
     return;
   }
 
+  const tableEl = document.querySelector('#schedule-container .schedule-table');
+  if (!tableEl) { alert('スケジュール表が見つかりません。'); return; }
+
+  const btn = document.getElementById('export-pdf-btn');
+  btn.textContent = 'PDF生成中...';
+  btn.disabled = true;
+
   const [year, month] = state.targetMonth.split('-').map(Number);
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
 
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  html2canvas(tableEl, { scale: 2, useCORS: true }).then(canvas => {
+    const { jsPDF } = window.jspdf;
+    const imgData = canvas.toDataURL('image/png');
 
-  doc.setFont('helvetica');
-  doc.setFontSize(14);
-  doc.text(`${month}月 Gym Schedule (${year})`, 14, 15);
+    // A4に収まるようにサイズ計算
+    const pageWidth = 297; // A4横
+    const pageHeight = 210;
+    const margin = 10;
+    const maxW = pageWidth - margin * 2;
+    const maxH = pageHeight - margin * 2 - 10; // タイトル分
 
-  const headRow = ['Day', 'DoW', 'Event'];
-  state.clubs.forEach(c => headRow.push(c.name));
-
-  const tableData = [];
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    const date = new Date(year, month - 1, d);
-    const dow = date.getDay();
-
-    const events = getEventsForDate(dateStr);
-    const eventNames = events.map(ev => ev.name).join(', ');
-
-    const row = [d, dayNames[dow], eventNames];
-
-    const dayAvailable = isDayAvailable(dateStr);
-    state.clubs.forEach(club => {
-      if (!dayAvailable) {
-        row.push('');
-      } else if (!isClubAvailable(club.id, dateStr)) {
-        row.push('x');
-      } else {
-        const assigned = state.schedule[dateStr] && state.schedule[dateStr][club.id];
-        row.push(assigned ? 'O' : '');
-      }
-    });
-
-    tableData.push(row);
-  }
-
-  doc.autoTable({
-    head: [headRow],
-    body: tableData,
-    startY: 22,
-    styles: { fontSize: 7, cellPadding: 1.5, halign: 'center' },
-    headStyles: { fillColor: [44, 62, 80] },
-    columnStyles: {
-      2: { halign: 'left', cellWidth: 40 }
-    },
-    didParseCell: function(data) {
-      if (data.section === 'body') {
-        const dow = data.row.raw[1];
-        if (dow === '日') {
-          if (data.column.index <= 2) data.cell.styles.textColor = [231, 76, 60];
-          data.cell.styles.fillColor = [240, 240, 240];
-        } else if (dow === '土') {
-          if (data.column.index <= 2) data.cell.styles.textColor = [52, 152, 219];
-          data.cell.styles.fillColor = [240, 240, 240];
-        }
-      }
+    const ratio = canvas.width / canvas.height;
+    let imgW = maxW;
+    let imgH = imgW / ratio;
+    if (imgH > maxH) {
+      imgH = maxH;
+      imgW = imgH * ratio;
     }
-  });
 
-  doc.save(`gym_schedule_${year}_${month}.pdf`);
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    doc.setFontSize(14);
+    doc.text(`${month}月 体育館使用割 (${year})`, margin, margin + 5);
+    doc.addImage(imgData, 'PNG', margin, margin + 10, imgW, imgH);
+    doc.save(`体育館使用割_${year}年${month}月.pdf`);
+  }).catch(err => {
+    console.error('PDF生成エラー:', err);
+    alert('PDF生成に失敗しました。');
+  }).finally(() => {
+    btn.textContent = 'PDF出力';
+    btn.disabled = false;
+  });
 }
 
 // ========================================
