@@ -878,7 +878,7 @@ function exportPdf() {
     const pageHeight = 210;
     const margin = 10;
     const maxW = pageWidth - margin * 2;
-    const maxH = pageHeight - margin * 2 - 10; // タイトル分
+    const maxH = pageHeight - margin * 2;
 
     const ratio = canvas.width / canvas.height;
     let imgW = maxW;
@@ -889,9 +889,7 @@ function exportPdf() {
     }
 
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    doc.setFontSize(14);
-    doc.text(`${month}月 体育館使用割 (${year})`, margin, margin + 5);
-    doc.addImage(imgData, 'PNG', margin, margin + 10, imgW, imgH);
+    doc.addImage(imgData, 'PNG', margin, margin, imgW, imgH);
     doc.save(`体育館使用割_${year}年${month}月.pdf`);
   }).catch(err => {
     console.error('PDF生成エラー:', err);
