@@ -873,9 +873,9 @@ function exportPdf() {
     const { jsPDF } = window.jspdf;
     const imgData = canvas.toDataURL('image/png');
 
-    // A4に収まるようにサイズ計算
-    const pageWidth = 297; // A4横
-    const pageHeight = 210;
+    // A4縦に収まるようにサイズ計算
+    const pageWidth = 210;
+    const pageHeight = 297;
     const margin = 10;
     const maxW = pageWidth - margin * 2;
     const maxH = pageHeight - margin * 2;
@@ -888,7 +888,7 @@ function exportPdf() {
       imgW = imgH * ratio;
     }
 
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     doc.addImage(imgData, 'PNG', margin, margin, imgW, imgH);
     doc.save(`体育館使用割_${year}年${month}月.pdf`);
   }).catch(err => {
